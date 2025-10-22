@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>RT Store - Painel de Estoque</title>
+<style>
+  /* Reset básico */
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(160deg,#1a1a1a,#222831);
+    color: #fff;
+    display: flex;
+    justify-content: center;
+    padding: 40px;
+  }
+
+  h1 {
+    text-align: center;
+    color: #ffdd59;
+    margin-bottom: 30px;
+    text-shadow: 2px 2px 6px #000;
+  }
+
+  .container {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+    width: 600px;
+  }
+
+  /* Cards das frutas/plants */
+  .item-card {
+    background: #2b2b2b;
+    border-radius: 15px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    box-shadow: 0 6px 15px rgba(0,0,0,0.6);
+    transition: transform 0.2s;
+  }
+  .item-card:hover { transform: translateY(-3px); }
+
+  .item-header {
+    font-size: 22px;
+    font-weight: 700;
+    color: #ffd32a;
+    text-shadow: 1px 1px 3px #000;
+  }
+
+  .field-group {
+    display: flex;
+    justify-content: space-between;
+    gap: 15px;
+    align-items: center;
+  }
+
+  label {
+    font-weight: bold;
+    font-size: 16px;
+  }
+
+  input[type="number"] {
+    width: 120px;
+    padding: 8px;
+    border-radius: 8px;
+    border: none;
+    text-align: center;
+    font-weight: bold;
+    background: #3a3a3a;
+    color: #fff;
+    transition: 0.2s;
+  }
+  input[type="number"]:focus {
+    outline: 2px solid #ffdd59;
+  }
+
+  .stock-display {
+    font-size: 16px;
+    font-weight: 600;
+    color: #00ffa3;
+  }
+  .stock-display.esgotado { color: #ff3f3f; }
+
+  button {
+    padding: 15px 25px;
+    border: none;
+    border-radius: 10px;
+    background: #ffdd59;
+    color: #000;
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 18px;
+    transition: 0.2s;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+  }
+  button:hover { background: #e6c94f; }
+
+  /* Notificação customizada */
+  .notification {
+    position: fixed;
+    top: 30px;
+    right: 30px;
+    background: rgba(50,50,50,0.95);
+    padding: 15px 25px;
+    border-radius: 12px;
+    display: none;
+    font-weight: bold;
+    font-size: 16px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.7);
+    z-index: 9999;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>🧠 DOLLYA STORE - PAINEL</h1>
+  <div id="cards-container"></div>
+  <button id="save-btn">💾 Salvar Alterações</button>
+</div>
+
+<div id="notification" class="notification"></div>
+
+<script>
+const cardsContainer = document.getElementById('cards-container');
+const notification = document.getElementById('notification');
+
+function showNotification(text) {
+  notification.textContent = text;
+  notification.style.display = 'block';
+  setTimeout(()=>{ notification.style.display = 'none'; }, 3000);
+}
+
+function createCards(stock) {
+  cardsContainer.innerHTML = '';
+  stock.forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'item-card';
+    card.innerHTML = `
+      <div class="item-header">${item.emoji} ${item.name}</div>
+      <div class="field-group">
+        <label>Preço (R$)</label>
+        <input type="number" step="0.01" id="${item.id}_price" value="${item.price.toFixed(2)}">
+      </div>
+      <div class="field-group">
+        <label>Estoque</label>
+        <input type="number" id="${item.id}_quantity" value="${item.quantity}" min="0">
+      </div>
+      <div>Disponível: <span class="stock-display ${item.quantity===0?'esgotado':''}" id="${item.id}_display">${item.quantity>0?item.quantity:'ESGOTADO'}</span></div>
+    `;
+    cardsContainer.appendChild(card);
+  });
+}
+
+async function loadStock() {
+  try {
+    const res = await fetch('/get-stock');
+    const data = await res.json();
+    createCards(data);
+  } catch(err) {
+    console.error('Erro ao carregar stock:', err);
+    showNotification('Erro ao carregar stock!');
+  }
+}
+
+async function saveStock() {
+  const inputs = document.querySelectorAll('.item-card');
+  const payload = {};
+
+  inputs.forEach(card => {
+    const priceInput = card.querySelector('input[type="number"][id$="_price"]');
+    const qtyInput = card.querySelector('input[type="number"][id$="_quantity"]');
+
+    payload[priceInput.id] = parseFloat(priceInput.value);
+    payload[qtyInput.id] = parseInt(qtyInput.value);
+  });
+
+  try {
+    const res = await fetch('/update-stock', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+
+    data.stock.forEach(item => {
+      const displayEl = document.getElementById(`${item.id}_display`);
+      if(displayEl){
+        displayEl.textContent = item.quantity>0?item.quantity:'ESGOTADO';
+        displayEl.className = `stock-display ${item.quantity===0?'esgotado':''}`;
+      }
+    });
+
+    showNotification('💾 Alterações salvas com sucesso!');
+  } catch(err) {
+    console.error('Erro ao salvar stock:', err);
+    showNotification('Erro ao salvar alterações!');
+  }
+}
+
+document.getElementById('save-btn').addEventListener('click', saveStock);
+window.onload = loadStock;
+</script>
+
+</body>
+</html>
